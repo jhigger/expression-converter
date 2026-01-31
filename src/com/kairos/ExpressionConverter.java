@@ -2,32 +2,143 @@ package com.kairos;
 
 import java.util.Scanner;
 import java.util.Stack;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ExpressionConverter {
 
-    private static boolean isOperator(char ch) {
-        return ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '^' || ch == '%';
+    private static class Token {
+        String value;
+        TokenType type;
+
+        Token(String value, TokenType type) {
+            this.value = value;
+            this.type = type;
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
     }
 
-    private static int getPrecedence(char operator) {
+    private enum TokenType {
+        OPERAND, OPERATOR, OPEN_PAREN, CLOSE_PAREN
+    }
+
+    private static int getPrecedence(String operator) {
         return switch (operator) {
-            case '^' -> 3;
-            case '*', '/', '%' -> 2;
-            case '+', '-' -> 1;
+            case "^", "log" -> 3;
+            case "*", "/", "%" -> 2;
+            case "+", "-" -> 1;
             default -> -1;
         };
     }
 
-    private static boolean isRightAssociative(char operator) {
-        return operator == '^';
+    private static boolean isRightAssociative(String operator) {
+        return operator.equals("^") || operator.equals("log");
     }
 
-    private static boolean isOperand(char ch) {
-        return Character.isLetterOrDigit(ch);
+    private static boolean isWhitespace(char ch) {
+        return ch == ' ';
     }
 
-    private static boolean shouldPopOperator(char stackOp, char currentOp) {
-        if (stackOp == '(') {
+    private static boolean isSingleCharOperator(char ch) {
+        return ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '^' || ch == '%';
+    }
+
+    private static boolean isLogOperator(String expression, int index) {
+        return index + 3 <= expression.length() &&
+                expression.startsWith("log", index);
+    }
+
+    private static int addOpenParenToken(List<Token> tokens, int index) {
+        tokens.add(new Token("(", TokenType.OPEN_PAREN));
+        return index + 1;
+    }
+
+    private static int addCloseParenToken(List<Token> tokens, int index) {
+        tokens.add(new Token(")", TokenType.CLOSE_PAREN));
+        return index + 1;
+    }
+
+    private static int addLogToken(List<Token> tokens, int index) {
+        tokens.add(new Token("log", TokenType.OPERATOR));
+        return index + 3;
+    }
+
+    private static int addSingleCharOperatorToken(List<Token> tokens, char ch, int index) {
+        tokens.add(new Token(String.valueOf(ch), TokenType.OPERATOR));
+        return index + 1;
+    }
+
+    private static String readOperand(String expression, int startIndex) {
+        StringBuilder operand = new StringBuilder();
+        int i = startIndex;
+
+        while (i < expression.length() && Character.isLetterOrDigit(expression.charAt(i))) {
+            if (i + 3 <= expression.length() && expression.startsWith("log", i)) {
+                break;
+            }
+            operand.append(expression.charAt(i));
+            i++;
+        }
+
+        return operand.toString();
+    }
+
+    private static int addOperandToken(List<Token> tokens, String expression, int index) {
+        String operand = readOperand(expression, index);
+
+        if (!operand.isEmpty()) {
+            tokens.add(new Token(operand, TokenType.OPERAND));
+        }
+
+        return index + operand.length();
+    }
+
+    private static int processCharacter(List<Token> tokens, String expression, int index) {
+        char ch = expression.charAt(index);
+
+        if (isWhitespace(ch)) {
+            return index + 1;
+        }
+
+        if (ch == '(') {
+            return addOpenParenToken(tokens, index);
+        }
+
+        if (ch == ')') {
+            return addCloseParenToken(tokens, index);
+        }
+
+        if (isSingleCharOperator(ch)) {
+            return addSingleCharOperatorToken(tokens, ch, index);
+        }
+
+        if (Character.isLetterOrDigit(ch)) {
+            if (isLogOperator(expression, index)) {
+                return addLogToken(tokens, index);
+            }
+            return addOperandToken(tokens, expression, index);
+        }
+
+        return index + 1;
+    }
+
+    private static List<Token> tokenize(String expression) {
+        List<Token> tokens = new ArrayList<>();
+        int i = 0;
+
+        while (i < expression.length()) {
+            i = processCharacter(tokens, expression, i);
+        }
+
+        return tokens;
+    }
+
+    private static boolean shouldPopOperator(String stackOp, String currentOp) {
+        if (stackOp.equals("(")) {
             return false;
         }
 
@@ -41,129 +152,139 @@ public class ExpressionConverter {
         return stackPrecedence == currentPrecedence && !isRightAssociative(currentOp);
     }
 
-    private static void processOperand(char ch, StringBuilder output) {
-        output.append(ch);
+    private static void appendToken(Token token, List<String> output) {
+        output.add(token.value);
     }
 
-    private static void processOpeningParenthesis(Stack<Character> stack) {
-        stack.push('(');
+    private static void processOpeningParenthesis(Stack<String> stack) {
+        stack.push("(");
     }
 
-    private static void processClosingParenthesis(Stack<Character> stack, StringBuilder output) {
-        while (!stack.isEmpty() && stack.peek() != '(') {
-            output.append(stack.pop());
+    private static void processClosingParenthesis(Stack<String> stack, List<String> output) {
+        while (!stack.isEmpty() && !stack.peek().equals("(")) {
+            output.add(stack.pop());
         }
 
-        if (!stack.isEmpty() && stack.peek() == '(') {
+        if (!stack.isEmpty() && stack.peek().equals("(")) {
             stack.pop();
         }
     }
 
-    private static void processOperator(char operator, Stack<Character> stack, StringBuilder output) {
+    private static void processOperator(String operator, Stack<String> stack, List<String> output) {
         while (!stack.isEmpty() && shouldPopOperator(stack.peek(), operator)) {
-            output.append(stack.pop());
+            output.add(stack.pop());
         }
         stack.push(operator);
     }
 
-    private static void popRemainingOperators(Stack<Character> stack, StringBuilder output) {
+    private static void popRemainingOperators(Stack<String> stack, List<String> output) {
         while (!stack.isEmpty()) {
-            char op = stack.pop();
-            if (op != '(') {
-                output.append(op);
+            String op = stack.pop();
+            if (!op.equals("(")) {
+                output.add(op);
             }
         }
     }
 
+    private static String joinTokens(List<String> tokens) {
+        StringBuilder result = new StringBuilder();
+        for (String token : tokens) {
+            result.append(token);
+        }
+        return result.toString();
+    }
+
     public static String infixToPostfix(String infix) {
-        StringBuilder postfix = new StringBuilder();
-        Stack<Character> stack = new Stack<>();
+        List<Token> tokens = tokenize(infix);
+        List<String> postfix = new ArrayList<>();
+        Stack<String> stack = new Stack<>();
 
-        for (char ch : infix.toCharArray()) {
-            if (ch == ' ') {
-                continue;
-            }
-
-            if (isOperand(ch)) {
-                processOperand(ch, postfix);
-            } else if (ch == '(') {
+        for (Token token : tokens) {
+            if (token.type == TokenType.OPERAND) {
+                appendToken(token, postfix);
+            } else if (token.type == TokenType.OPEN_PAREN) {
                 processOpeningParenthesis(stack);
-            } else if (ch == ')') {
+            } else if (token.type == TokenType.CLOSE_PAREN) {
                 processClosingParenthesis(stack, postfix);
-            } else if (isOperator(ch)) {
-                processOperator(ch, stack, postfix);
+            } else if (token.type == TokenType.OPERATOR) {
+                processOperator(token.value, stack, postfix);
             }
         }
 
         popRemainingOperators(stack, postfix);
-        return postfix.toString();
+        return joinTokens(postfix);
     }
 
-    private static String reverseAndSwapParentheses(String infix) {
-        StringBuilder reversed = new StringBuilder();
+    private static List<Token> reverseTokensAndSwapParentheses(List<Token> tokens) {
+        List<Token> reversed = new ArrayList<>();
 
-        for (int i = infix.length() - 1; i >= 0; i--) {
-            char ch = infix.charAt(i);
+        for (int i = tokens.size() - 1; i >= 0; i--) {
+            Token token = tokens.get(i);
 
-            if (ch == '(') {
-                reversed.append(')');
-            } else if (ch == ')') {
-                reversed.append('(');
+            if (token.type == TokenType.OPEN_PAREN) {
+                reversed.add(new Token(")", TokenType.CLOSE_PAREN));
+            } else if (token.type == TokenType.CLOSE_PAREN) {
+                reversed.add(new Token("(", TokenType.OPEN_PAREN));
             } else {
-                reversed.append(ch);
+                reversed.add(token);
             }
         }
 
-        return reversed.toString();
+        return reversed;
     }
 
-    private static boolean shouldPopForPrefix(char stackOp, char currentOp) {
-        if (stackOp == '(') {
+    private static boolean shouldPopForPrefix(String stackOp, String currentOp) {
+        if (stackOp.equals("(")) {
             return false;
         }
 
         return getPrecedence(stackOp) > getPrecedence(currentOp);
     }
 
-    private static void processOperatorForPrefix(char operator, Stack<Character> stack, StringBuilder output) {
+    private static void processOperatorForPrefix(String operator, Stack<String> stack, List<String> output) {
         while (!stack.isEmpty() && shouldPopForPrefix(stack.peek(), operator)) {
-            output.append(stack.pop());
+            output.add(stack.pop());
         }
         stack.push(operator);
     }
 
-    private static String convertReversedToPostfix(String reversedInfix) {
-        StringBuilder postfix = new StringBuilder();
-        Stack<Character> stack = new Stack<>();
+    private static List<String> convertReversedToPostfixList(List<Token> reversedTokens) {
+        List<String> postfix = new ArrayList<>();
+        Stack<String> stack = new Stack<>();
 
-        for (char ch : reversedInfix.toCharArray()) {
-            if (ch == ' ') {
-                continue;
-            }
-
-            if (isOperand(ch)) {
-                processOperand(ch, postfix);
-            } else if (ch == '(') {
+        for (Token token : reversedTokens) {
+            if (token.type == TokenType.OPERAND) {
+                appendToken(token, postfix);
+            } else if (token.type == TokenType.OPEN_PAREN) {
                 processOpeningParenthesis(stack);
-            } else if (ch == ')') {
+            } else if (token.type == TokenType.CLOSE_PAREN) {
                 processClosingParenthesis(stack, postfix);
-            } else if (isOperator(ch)) {
-                processOperatorForPrefix(ch, stack, postfix);
+            } else if (token.type == TokenType.OPERATOR) {
+                processOperatorForPrefix(token.value, stack, postfix);
             }
         }
 
         popRemainingOperators(stack, postfix);
-        return postfix.toString();
+        return postfix;
+    }
+
+    private static String reverseTokenList(List<String> tokens) {
+        StringBuilder reversed = new StringBuilder();
+        for (int i = tokens.size() - 1; i >= 0; i--) {
+            reversed.append(tokens.get(i));
+        }
+        return reversed.toString();
     }
 
     public static String infixToPrefix(String infix) {
-        String reversedInfix = reverseAndSwapParentheses(infix);
-        String postfix = convertReversedToPostfix(reversedInfix);
-        return new StringBuilder(postfix).reverse().toString();
+        List<Token> tokens = tokenize(infix);
+        List<Token> reversedTokens = reverseTokensAndSwapParentheses(tokens);
+        List<String> postfixList = convertReversedToPostfixList(reversedTokens);
+        return reverseTokenList(postfixList);
     }
 
     public static boolean hasBalancedParentheses(String expression) {
-        Stack<Character> stack = new Stack<Character>();
+        Stack<Character> stack = new Stack<>();
 
         for (char ch : expression.toCharArray()) {
             if (ch == '(') {
@@ -184,6 +305,10 @@ public class ExpressionConverter {
         System.out.println("   Expression Converter Program");
         System.out.println("   Infix → Prefix & Postfix");
         System.out.println("========================================");
+        System.out.println();
+        System.out.println("Operators: +, -, *, /, ^, %, log");
+        System.out.println("Use log for logarithm: AlogB means log_A(B)");
+        System.out.println("Type 'exit' or 'quit' to exit");
         System.out.println();
     }
 
@@ -240,7 +365,6 @@ public class ExpressionConverter {
             String infix = scanner.nextLine().trim();
 
             if (shouldExit(infix)) {
-                System.out.println("Thank you for using the Expression Converter!");
                 break;
             }
 
