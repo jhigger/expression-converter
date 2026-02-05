@@ -48,8 +48,7 @@ public class ExpressionConverter {
     }
 
     private static boolean isLogOperator(String expression, int index) {
-        return index + 3 <= expression.length() &&
-                expression.startsWith("log", index);
+        return index + 3 <= expression.length() && expression.startsWith("log", index);
     }
 
     private static int addOpenParenToken(List<Token> tokens, int index) {
@@ -75,13 +74,25 @@ public class ExpressionConverter {
     private static String readOperand(String expression, int startIndex) {
         StringBuilder operand = new StringBuilder();
         int i = startIndex;
+        boolean hasDecimal = false;
 
-        while (i < expression.length() && Character.isLetterOrDigit(expression.charAt(i))) {
+        while (i < expression.length()) {
+            char ch = expression.charAt(i);
+
             if (i + 3 <= expression.length() && expression.startsWith("log", i)) {
                 break;
             }
-            operand.append(expression.charAt(i));
-            i++;
+
+            if (Character.isLetterOrDigit(ch)) {
+                operand.append(ch);
+                i++;
+            } else if (ch == '.' && !hasDecimal && Character.isDigit(expression.charAt(startIndex))) {
+                hasDecimal = true;
+                operand.append(ch);
+                i++;
+            } else {
+                break;
+            }
         }
 
         return operand.toString();
@@ -116,7 +127,7 @@ public class ExpressionConverter {
             return addSingleCharOperatorToken(tokens, ch, index);
         }
 
-        if (Character.isLetterOrDigit(ch)) {
+        if (Character.isLetterOrDigit(ch) || (ch == '.' && index + 1 < expression.length() && Character.isDigit(expression.charAt(index + 1)))) {
             if (isLogOperator(expression, index)) {
                 return addLogToken(tokens, index);
             }
@@ -308,6 +319,8 @@ public class ExpressionConverter {
         System.out.println();
         System.out.println("Operators: +, -, *, /, ^, %, log");
         System.out.println("Use log for logarithm: AlogB means log_A(B)");
+        System.out.println("Supports: multi-digit numbers (10, 100)");
+        System.out.println("          decimal numbers (3.14, 2.5)");
         System.out.println("Type 'exit' or 'quit' to exit");
         System.out.println();
     }
@@ -365,6 +378,7 @@ public class ExpressionConverter {
             String infix = scanner.nextLine().trim();
 
             if (shouldExit(infix)) {
+                System.out.println("Thank you for using the Expression Converter!");
                 break;
             }
 
